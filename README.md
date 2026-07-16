@@ -70,6 +70,4 @@ docker run -p 8000:8000 ffribeiro/docker-image-pipeline:local
 | `DOCKERHUB_USERNAME` | Your Docker Hub username |
 | `DOCKERHUB_TOKEN` | A Docker Hub [access token](https://hub.docker.com/settings/security) (not your password) |
 
-These require access we don't have (your Docker Hub credentials) — someone
-with the right permissions needs to create them manually before merging to
-`main`, or the `build-and-push` job will fail.
+The right permissions needs to be created before merging to `main`, or the `build-and-push` job will fail at the login step.
