@@ -47,6 +47,33 @@ docker run -p 8000:8000 ffribeiro/docker-image-pipeline:local
    as `ffribeiro/docker-image-pipeline:<VERSION>` and
    `ffribeiro/docker-image-pipeline:<commit-sha>`.
 
+## Testing and dependencies
+
+### How tests are discovered
+
+The `test` job just runs `pytest` with no path argument. Pytest's default
+discovery walks the current directory (the repo root, since CI runs it right
+after checkout) and picks up any file matching `test_*.py` or `*_test.py`,
+running functions inside named `test_*`. `tests/test_app.py` and
+`test_hello_world` match those rules automatically, no config needed.
+
+The empty `conftest.py` at the repo root matters too: its presence marks
+that directory as pytest's rootdir and causes pytest to insert the repo root
+onto `sys.path`. That's what lets `tests/test_app.py` do
+`from app.app import app` and resolve `app/` as a package.
+
+### Why there are two requirements files
+
+| File | Contents | Used by |
+|---|---|---|
+| `requirements.txt` | `flask`, `gunicorn` | The **Dockerfile** (`pip install -r requirements.txt`) — only what the running container needs |
+| `requirements-dev.txt` | `-r requirements.txt` + `pytest` | The **test job** (`pip install -r requirements-dev.txt`) — runtime deps plus test tooling |
+
+`requirements-dev.txt` includes `-r requirements.txt`, so it's a superset,
+not a second list to keep in sync by hand. Splitting them keeps `pytest` out
+of the production image, so the Docker image only carries what it needs to
+actually run.
+
 ## Releasing a new version
 
 1. When an app update is required, create a branch off `main` (e.g.
