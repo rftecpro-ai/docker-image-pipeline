@@ -35,7 +35,9 @@ jobs:
 
   image_scan:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # TEMP: also allow this branch to run for testing; revert before merging to main
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/explore/reusable-image-scan-workflow')
     permissions:
       contents: read
       security-events: write # required to upload SARIF to the Security tab
