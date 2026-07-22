@@ -93,7 +93,7 @@ jobs:
  
       - name: Upload SARIF to Code Scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
  
@@ -155,6 +155,14 @@ jobs:
             aquasec/trivy:${{ env.TRIVY_VERSION }} image \
             --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
             scan-target:${{ steps.version.outputs.value }}
+
+      # Every `docker run` above writes into .trivy-cache as root (the container's
+      # default user), but the runner's own user isn't root. actions/cache's
+      # automatic post-job save can't tar root-owned files, so it silently fails
+      # ("Failed to save... tar ... exit code 2") and the cache is never persisted.
+      - name: Fix Trivy cache ownership before caching
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" .trivy-cache
 
       - name: Build and push image
         uses: docker/build-push-action@v6
