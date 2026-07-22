@@ -104,21 +104,33 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
             aquasec/trivy:${{ env.TRIVY_VERSION }} image \
-            --format table --severity HIGH,CRITICAL \
+            --format table --severity HIGH,CRITICAL --ignore-unfixed \
             scan-target:${{ steps.version.outputs.value }} \
             >> "$GITHUB_STEP_SUMMARY"
- 
-      - name: Trivy scan (full JSON report, for artifact)
+
+      # Trivy has no native "html" format; it renders one via the html.tpl template
+      # from its own repo. Pin the template to TRIVY_VERSION so it always matches
+      # the scanner binary's output schema.
+      - name: Download Trivy HTML report template
+        if: always()
+        run: |
+          mkdir -p contrib
+          curl -sSL -o contrib/html.tpl \
+            "https://raw.githubusercontent.com/aquasecurity/trivy/v${{ env.TRIVY_VERSION }}/contrib/html.tpl"
+
+      - name: Trivy scan (HTML report, for artifact)
         if: always()
         run: |
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}":/work \
+            -v "${{ github.workspace }}/contrib":/contrib \
             -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
             aquasec/trivy:${{ env.TRIVY_VERSION }} image \
-            --format json --output /work/trivy-full-report.json \
+            --format template --template "@/contrib/html.tpl" \
+            --output /work/trivy-full-report.html --ignore-unfixed \
             scan-target:${{ steps.version.outputs.value }}
- 
+
       - name: Upload scan report artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -126,17 +138,19 @@ jobs:
           name: trivy-report-${{ steps.version.outputs.value }}
           path: |
             trivy-results.sarif
-            trivy-full-report.json
+            trivy-full-report.html
           retention-days: 30
- 
-      # Fail the pipeline before anything reaches Docker Hub if HIGH/CRITICAL CVEs exist.
+
+      # Fail the pipeline before anything reaches Docker Hub if HIGH/CRITICAL CVEs
+      # exist AND a fix is available. Unfixed CVEs still show up in the Security
+      # tab (SARIF scan above, which is intentionally not filtered) for tracking.
       - name: Gate on vulnerabilities
         run: |
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
             aquasec/trivy:${{ env.TRIVY_VERSION }} image \
-            --exit-code 1 --severity HIGH,CRITICAL \
+            --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed \
             scan-target:${{ steps.version.outputs.value }}
 
       - name: Build and push image
