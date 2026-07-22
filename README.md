@@ -1,7 +1,7 @@
 # docker-image-pipeline
 
 A minimal Flask "Hello World" web app, containerized with Docker and
-built/pushed to Docker Hub through a GitHub Actions CI pipeline.
+built/pushed to Docker Hub through a GitHub Actions CI pipeline..
 
 ## Folder structure
 
