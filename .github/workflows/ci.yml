@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["feature/*", "main"]
+    branches: ["feature/*", "explore/*", "main"]
   pull_request:
-    branches: ["feature/*", "main"]
+    branches: ["feature/*", "explore/*", "main"]
 
 env:
   IMAGE_NAME: ffribeiro/docker-image-pipeline
