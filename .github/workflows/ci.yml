@@ -104,7 +104,7 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
             aquasec/trivy:${{ env.TRIVY_VERSION }} image \
-            --format table --severity HIGH,CRITICAL --ignore-unfixed \
+            --format table --severity HIGH,CRITICAL \
             scan-target:${{ steps.version.outputs.value }} \
             >> "$GITHUB_STEP_SUMMARY"
 
@@ -128,7 +128,7 @@ jobs:
             -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
             aquasec/trivy:${{ env.TRIVY_VERSION }} image \
             --format template --template "@/contrib/html.tpl" \
-            --output /work/trivy-full-report.html --ignore-unfixed \
+            --output /work/trivy-full-report.html \
             scan-target:${{ steps.version.outputs.value }}
 
       - name: Upload scan report artifact
@@ -142,8 +142,8 @@ jobs:
           retention-days: 30
 
       # Fail the pipeline before anything reaches Docker Hub if HIGH/CRITICAL CVEs
-      # exist AND a fix is available. Unfixed CVEs still show up in the Security
-      # tab (SARIF scan above, which is intentionally not filtered) for tracking.
+      # exist AND a fix is available. Unfixed CVEs still show up in the job summary,
+      # HTML report artifact, and Security tab above (none of which filter them) for tracking.
       - name: Gate on vulnerabilities
         run: |
           docker run --rm \
