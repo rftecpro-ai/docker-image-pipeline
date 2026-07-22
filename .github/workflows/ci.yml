@@ -100,13 +100,16 @@ jobs:
       - name: Trivy scan (table, for job summary)
         if: always()
         run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
-            aquasec/trivy:${{ env.TRIVY_VERSION }} image \
-            --format table --severity HIGH,CRITICAL \
-            scan-target:${{ steps.version.outputs.value }} \
-            >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '```'
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
+              aquasec/trivy:${{ env.TRIVY_VERSION }} image \
+              --format table --severity HIGH,CRITICAL \
+              scan-target:${{ steps.version.outputs.value }}
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Trivy has no native "html" format; it renders one via the html.tpl template
       # from its own repo. Pin the template to TRIVY_VERSION so it always matches
