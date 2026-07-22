@@ -2,12 +2,13 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["feature/*", "main"]
   pull_request:
-    branches: ["main"]
+    branches: ["feature/*", "main"]
 
 env:
   IMAGE_NAME: ffribeiro/docker-image-pipeline
+  TRIVY_VERSION: "0.70.0"
 
 jobs:
   test:
@@ -31,6 +32,9 @@ jobs:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # required to upload SARIF to the Security tab
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -50,6 +54,88 @@ jobs:
       - name: Read version
         id: version
         run: echo "value=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+
+      # --- Build a local, single-arch image purely to scan before anything is pushed.
+      # Buildx can't --load a multi-platform manifest into the local daemon, so we scan
+      # the amd64 variant here and reuse the GHA cache for the real multi-arch build below.
+      - name: Build image for scanning (amd64, local only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: scan-target:${{ steps.version.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+ 
+      # Cache Trivy's vulnerability DB across the multiple scans below and across runs,
+      # otherwise each `docker run` re-downloads the full DB (slow, and hits rate limits).
+      - name: Restore Trivy DB cache
+        uses: actions/cache@v4
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+ 
+      - name: Trivy scan (SARIF, for Security tab / PR annotations)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}":/work \
+            -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
+            aquasec/trivy:${{ env.TRIVY_VERSION }} image \
+            --format sarif --output /work/trivy-results.sarif \
+            --severity HIGH,CRITICAL \
+            scan-target:${{ steps.version.outputs.value }}
+ 
+      - name: Upload SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+ 
+      - name: Trivy scan (table, for job summary)
+        if: always()
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
+            aquasec/trivy:${{ env.TRIVY_VERSION }} image \
+            --format table --severity HIGH,CRITICAL \
+            scan-target:${{ steps.version.outputs.value }} \
+            >> "$GITHUB_STEP_SUMMARY"
+ 
+      - name: Trivy scan (full JSON report, for artifact)
+        if: always()
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}":/work \
+            -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
+            aquasec/trivy:${{ env.TRIVY_VERSION }} image \
+            --format json --output /work/trivy-full-report.json \
+            scan-target:${{ steps.version.outputs.value }}
+ 
+      - name: Upload scan report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report-${{ steps.version.outputs.value }}
+          path: |
+            trivy-results.sarif
+            trivy-full-report.json
+          retention-days: 30
+ 
+      # Fail the pipeline before anything reaches Docker Hub if HIGH/CRITICAL CVEs exist.
+      - name: Gate on vulnerabilities
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${{ github.workspace }}/.trivy-cache":/root/.cache/trivy \
+            aquasec/trivy:${{ env.TRIVY_VERSION }} image \
+            --exit-code 1 --severity HIGH,CRITICAL \
+            scan-target:${{ steps.version.outputs.value }}
 
       - name: Build and push image
         uses: docker/build-push-action@v6
